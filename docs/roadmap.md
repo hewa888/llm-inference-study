@@ -3,7 +3,7 @@
 ## 当前只保留的最小主线
 
 ```text
-文字 → Token → Token ID → Embedding → Transformer → Logits → Softmax / Sampling → 下一个 Token
+文字 → Token → Token ID → Embedding → Transformer → Final Hidden State → LM Head → Logits → Softmax / Sampling → 下一个 Token
 ```
 
 完成后再逐步扩展：
@@ -17,7 +17,8 @@
 
 | 周次 | 主题 | 主要产物 |
 |---|---|---|
-| 1-2 | Transformer 推理基础 | 解释第一个和第二个 Token 如何产生 |
+| 1 | 模型输入和主体：Tokenizer 到多层 Transformer | 解释 Token ID 如何变成 Final Hidden State |
+| 2 | 模型输出和生成：LM Head、Logits 到解码策略 | 解释第一个和第二个 Token 如何产生 |
 | 3 | Prefill、Decode、KV Cache | KV Cache 计算表 |
 | 4 | Latency、Throughput、Batching | Benchmark 指标表 |
 | 5 | FlashAttention 与内存层次 | IO-aware 加速解释 |
