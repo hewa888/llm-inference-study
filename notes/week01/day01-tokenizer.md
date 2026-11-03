@@ -43,10 +43,12 @@ for text in texts:
 
 ## 我的结果
 
+![day01 tokenizer 实验输出](../../assets/week01/day01-tokenizer-output.png)
+
 | 原文 | Tokens | Token IDs | 数量 | 最意外的切分 |
 |---|---|---|---:|---|
-| 北京是中国的首都 |  |  |  |  |
-| 大模型推理 |  |  |  |  |
+| 北京是中国的首都 |  |  |  | 是中国 |
+| 大模型推理 |  |  |  |大, 模型  |
 | GPU kernel optimization |  |  |  |  |
 | 你好，world! |  |  |  |  |
 
@@ -59,6 +61,20 @@ for text in texts:
 
 ## 我的三个疑问
 
-1. 
-2. 
-3. 
+1. tokenizer和模型应该是配套的吧
+
+   答案：是的，Tokenizer 决定文本怎样变成模型理解的编号；模型的 Embedding Table 决定每个编号代表什么。二者必须使用训练时约定的同一套词表、ID 映射、特殊 Token 和 Chat Template。
+
+2. tokenizer应该是包含vocabulary吧，即又包含分词方法，又包含id编号
+
+   答案：对，Tokenizer 是文本与 Token ID 之间的完整转换系统。它包含词表和 Token-ID 映射，也包含文本预处理、分词或字节编码规则、特殊 Token、Chat Template 以及解码规则。
+
+   ```text
+   Tokenizer
+   ├── Vocabulary：Token ↔ Token ID 的映射
+   ├── 分词算法：决定文本如何切成 Token
+   ├── 预处理规则：大小写、空格、Unicode 规范化等
+   ├── 后处理规则：添加特殊 Token、拼接序列
+   ├── 特殊 Token 定义：BOS、EOS、PAD 等
+   └── Decode 规则：Token ID 如何还原为文本
+   ```
