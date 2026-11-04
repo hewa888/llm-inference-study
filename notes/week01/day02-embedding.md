@@ -1,8 +1,10 @@
-# Day 02：One-hot、Embedding Table 与 Embedding Lookup
+# Day 02：Embedding、LM Head 与 Softmax
 
 ## 今日目标
 
-理解一次转换：`Token ID → 初始向量`。
+理解模型两端的转换：输入端 `Token ID → 初始向量`，输出端 `Final Hidden State → Logits → 概率`。
+
+输入端：
 
 - **Token ID 只是索引**：它是 Embedding Table 的行号，数值大小和距离没有语义。
 - **One-hot Encoding**：长度为 Vocabulary Size 的向量，只有 Token ID 那一位是 1，其余都是 0。
@@ -10,6 +12,12 @@
 - **Embedding Lookup**：按 Token ID 取出对应的行，等价于 One-hot 向量乘以 Embedding Table。
 - **Vocabulary Size**：Embedding Table 的行数。
 - **Hidden Size**：每个 Token 向量的长度，也是后续 Transformer 中隐藏向量的长度。
+
+输出端：
+
+- **LM Head**：把 Final Hidden State 投影到词表空间的线性层。
+- **Logits**：词表中每个候选 Token 的原始分数。
+- **Softmax**：把 Logits 转换成总和为 1 的概率。
 
 ## 今日范围
 
@@ -27,7 +35,9 @@ Embedding Table:                                       shape [151936, 896]
 Output Embeddings:                                     shape [1, 4, 896]
 ```
 
-今日不展开：Logits、LM Head、Softmax、Sampling、下一个 Token 的选择、Contextual Hidden State。它们属于模型输出端，放到 [Week 02](../week02/README.md) 系统学习，文末的“我的总结”只做预览。
+输出端的 LM Head、Logits、Softmax 见文末“我的总结”。
+
+今日不展开：Transformer 内部如何结合上下文（Day 03 到 Day 07），以及 Temperature、Sampling 等下一个 Token 的选择方法（[Week 02](../week02/README.md)）。
 
 ## 学习材料
 
@@ -96,6 +106,8 @@ print("One-hot × Embedding Table = 查表:", torch.allclose(one_hot @ embedding
 - [ ] 知道 Embedding Table 的 shape 是 `[vocab_size, hidden_size]`。
 - [ ] 能写出查表前后的 shape：`[batch_size, sequence_length] → [batch_size, sequence_length, hidden_size]`。
 - [ ] 知道初始 Embedding 与上下文无关：同一个 Token ID 在任何句子中取出的都是同一行。
+- [ ] 能写出 LM Head 公式 `logits = h·Wᵀ + b`，并解释 Weight Tying。
+- [ ] 能写出 Softmax 公式，并说出它被使用的原因。
 
 ## 我的理解：从 Raw Text 到 Embedding
 
@@ -120,7 +132,7 @@ Token ID（Embedding Table 的行索引）
 3. **查表**：Token ID 本身只是 Embedding Table 的行索引，不表达语义大小或距离。模型使用 Token ID 从 Embedding Table 中取出一个可学习的向量。
 4. **形成语义**：初始 Embedding 提供 Token 的数值表示，而结合当前句子上下文的语义主要由后续 Transformer 层形成。
 
-## 我的总结：从 Token ID 到 Logits
+## 我的总结：从 Token ID 到概率
 
 ```text
 Token IDs                               [sequence_length]
@@ -130,12 +142,15 @@ Initial Embeddings                      [sequence_length, hidden_size]
 Final Hidden States（结合上下文）       [sequence_length, hidden_size]
 → LM Head 矩阵乘法
 Vocabulary Logits                       [sequence_length, vocab_size]
+→ Softmax
+Probabilities                           [sequence_length, vocab_size]
 ```
 
 1. **查表**：Token ID 是 Embedding Table 的行索引。Embedding Lookup 在数学上等价于 One-hot 向量乘 Embedding Matrix，但实际实现直接按行取，得到 Token 的初始 Embedding Vector。
 2. **结合上下文**：初始 Embedding 经过多层 Transformer，得到结合上下文的 Final Hidden State。
 3. **输出分数**：Final Hidden State 经过 LM Head 的线性投影，为 Vocabulary 中每个候选 Token 计算一个 Logit。Logit 的个数等于 `config.vocab_size`（151936），也包括那 271 个空位。
-4. **训练与推理**：训练阶段，Embedding Table、Transformer、LM Head 的参数通过前向计算、Loss、反向传播和优化器不断更新；推理阶段，这些参数保持固定。
+4. **转成概率**：Softmax 把每个位置的 Logits 转换成一组概率，每个概率在 0 到 1 之间，总和为 1。
+5. **训练与推理**：训练阶段，Embedding Table、Transformer、LM Head 的参数通过前向计算、Loss、反向传播和优化器不断更新；推理阶段，这些参数保持固定。
 
 ### LM Head 公式
 
@@ -154,3 +169,35 @@ $W$ 是否就是 Embedding Table，分两种情况：
 - **不共享权重**：$W$ 和 Embedding Table 是两张独立的矩阵，各自训练。
 
 以 Qwen2.5-0.5B 为例（Day 07 的实验可以验证）：`tie_word_embeddings` 为 `True`，即共享权重；`lm_head` 的 `bias=False`，即没有 $b$，公式简化为 $\text{logits} = h W^\top$。这张矩阵有 151936 × 896 ≈ 1.36 亿个参数，约占模型全部 4.94 亿参数的 27%，共享权重就省下了这一整张矩阵。
+
+### Softmax 公式
+
+$$
+p_i = \frac{e^{z_i}}{\sum_{j=1}^{V} e^{z_j}}
+$$
+
+- $z_i$：第 i 个候选 Token 的 logit。
+- $V$：词表大小 `vocab_size`。
+- $p_i$：第 i 个候选 Token 的概率，每个都在 0 到 1 之间，全部加起来等于 1。
+
+几个性质：
+
+- **不改变排序**：logit 最大的 Token，概率也最大。
+- **只看差值**：所有 logits 同时加上一个常数，概率不变；所以 logits 全部相等时，每个 Token 的概率相同。
+- **放大差距**：两个 Token 的概率之比是 $e^{z_i - z_j}$，logit 每差 1，概率就差约 2.7 倍。
+
+为什么用 Softmax：
+
+- **得到合法的概率分布**：任意实数 Logits 都能转换成互斥类别上的概率分布，每个值非负、总和为 1。
+- **与训练目标天然配合**：Softmax 与最大似然、交叉熵损失 $L = -\log p_y$（$y$ 是正确的 Token）结合后，对 Logits 的梯度就是 $p - \text{onehot}(y)$，形式简单、数值稳定。
+- **不是因为硬件友好**：Softmax 不是因为计算便宜才被选用。
+
+实际开销与优化：
+
+- Softmax 包含指数运算和归约（求最大值、求和），在词表很大时并不便宜。
+- **数值稳定变换**：先让所有 logits 减去最大值再算指数，结果不变（利用“只看差值”），但能避免指数溢出。
+- **融合 Kernel**：把求最大值、指数、求和、相除合并成一个 Kernel，减少读写显存的次数。
+- **先做 Top-k**：采样时只保留分数最高的 k 个 Token，再在这 k 个上算 Softmax。
+- **Greedy 解码跳过 Softmax**：只取概率最大的 Token 时，直接对 Logits 取最大值即可（利用“不改变排序”）。
+
+Softmax 只负责把分数变成概率，最终选哪个 Token 由解码策略决定（Week 02）。Day 03 计算 Attention 权重时用的也是同一个 Softmax。
